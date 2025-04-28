@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chia sẻ Code và Văn bản</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        #editor {
+            height: 400px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        button {
+            padding: 8px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #copyBtn {
+            background-color: #2196F3;
+        }
+        #copyBtn:hover {
+            background-color: #0b7dda;
+        }
+        #status {
+            padding: 10px;
+            margin-top: 10px;
+            color: #333;
+            text-align: center;
+            font-style: italic;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        @media (max-width: 600px) {
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Chia sẻ Code và Văn bản</h1>
+    <div class="container">
+        <div class="controls">
+            <div class="button-group">
+                <button id="saveBtn">Lưu</button>
+                <button id="copyBtn">Sao chép</button>
+            </div>
+            <div>
+                <label for="mode">Chế độ:</label>
+                <select id="mode">
+                    <option value="text">Văn bản</option>
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="html">HTML</option>
+                    <option value="css">CSS</option>
+                    <option value="java">Java</option>
+                    <option value="csharp">C#</option>
+                    <option value="php">PHP</option>
+                </select>
+            </div>
+        </div>
+        <div id="editor">{{ content }}</div>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        // Khởi tạo editor
+        const editor = ace.edit("editor");
+        editor.setTheme("ace/theme/monokai");
+        editor.session.setMode("ace/mode/text");
+        editor.setFontSize(16);
+        
+        // Kết nối Socket.IO
+        const socket = io();
+        let isReceivingUpdate = false;
+        
+        // Lắng nghe sự kiện cập nhật nội dung
+        socket.on('content_update', function(data) {
+            isReceivingUpdate = true;
+            editor.setValue(data.content, -1); // -1 để đặt con trỏ ở cuối
+            isReceivingUpdate = false;
+            showStatus("Nội dung đã được cập nhật", "success");
+        });
+
+        // Chức năng lưu nội dung
+        document.getElementById('saveBtn').addEventListener('click', function() {
+            const content = editor.getValue();
+            saveContent(content);
+        });
+
+        // Chức năng sao chép nội dung
+        document.getElementById('copyBtn').addEventListener('click', function() {
+            const content = editor.getValue();
+            navigator.clipboard.writeText(content)
+                .then(() => {
+                    showStatus("Đã sao chép vào clipboard", "success");
+                })
+                .catch(err => {
+                    showStatus("Không thể sao chép: " + err, "error");
+                });
+        });
+
+        // Chọn chế độ cho editor
+        document.getElementById('mode').addEventListener('change', function() {
+            editor.session.setMode("ace/mode/" + this.value);
+        });
+
+        // Lưu nội dung lên server
+        function saveContent(content) {
+            fetch('/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    'content': content
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showStatus("Đã lưu thành công", "success");
+                } else {
+                    showStatus("Lỗi: " + (data.error || "Không xác định"), "error");
+                }
+            })
+            .catch(error => {
+                showStatus("Lỗi kết nối: " + error, "error");
+            });
+        }
+
+        // Hiển thị trạng thái
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = type;
+            
+            // Tự động ẩn sau 3 giây
+            setTimeout(() => {
+                status.textContent = '';
+                status.className = '';
+            }, 3000);
+        }
+
+        // Tự động lưu sau khi chỉnh sửa (nếu muốn)
+        let saveTimeout;
+        editor.session.on('change', function() {
+            if (!isReceivingUpdate) {
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    saveContent(editor.getValue());
+                }, 2000); // Tự động lưu sau 2 giây không có thay đổi
+            }
+        });
+    </script>
+</body>
+</html>
